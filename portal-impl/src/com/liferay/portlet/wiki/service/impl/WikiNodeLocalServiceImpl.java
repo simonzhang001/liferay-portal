@@ -677,34 +677,14 @@ public class WikiNodeLocalServiceImpl extends WikiNodeLocalServiceBaseImpl {
 				oldStatus = trashVersion.getStatus();
 			}
 
-			// Version pages
+			page.setStatus(oldStatus);
 
-			List<WikiPage> versionPages = wikiPagePersistence.findByR_N(
-				page.getResourcePrimKey(), page.getNodeId());
+			wikiPagePersistence.update(page);
 
-			for (WikiPage versionPage : versionPages) {
+			// Trash
 
-				// Version page
-
-				trashVersion = trashVersionLocalService.fetchVersion(
-					trashEntryId, WikiPage.class.getName(),
-					versionPage.getPageId());
-
-				int versionPageOldStatus = WorkflowConstants.STATUS_APPROVED;
-
-				if (trashVersion != null) {
-					versionPageOldStatus = trashVersion.getStatus();
-				}
-
-				versionPage.setStatus(versionPageOldStatus);
-
-				wikiPagePersistence.update(versionPage);
-
-				// Trash
-
-				if (trashVersion != null) {
-					trashVersionLocalService.deleteTrashVersion(trashVersion);
-				}
+			if (trashVersion != null) {
+				trashVersionLocalService.deleteTrashVersion(trashVersion);
 			}
 
 			// Asset
