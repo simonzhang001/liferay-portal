@@ -18,8 +18,12 @@ import com.liferay.portal.kernel.trash.BaseTrashRenderer;
 import com.liferay.portal.model.ExportImportConfiguration;
 import com.liferay.portal.theme.ThemeDisplay;
 import com.liferay.portal.util.PortletKeys;
+import com.liferay.portal.util.WebKeys;
 
 import java.util.Locale;
+
+import javax.portlet.RenderRequest;
+import javax.portlet.RenderResponse;
 
 /**
  * @author Levente Hudák
@@ -67,6 +71,19 @@ public class ExportImportConfigurationTrashRenderer extends BaseTrashRenderer {
 	@Override
 	public String getType() {
 		return TYPE;
+	}
+
+	@Override
+	public String render(
+			RenderRequest renderRequest, RenderResponse renderResponse,
+			String template)
+		throws Exception {
+
+		renderRequest.setAttribute(
+			WebKeys.EXPORT_IMPORT_CONFIGURATION_ID,
+			_exportImportConfiguration.getExportImportConfigurationId());
+
+		return "/html/portlet/layouts_admin/view_configuration.jsp";
 	}
 
 	private ExportImportConfiguration _exportImportConfiguration;

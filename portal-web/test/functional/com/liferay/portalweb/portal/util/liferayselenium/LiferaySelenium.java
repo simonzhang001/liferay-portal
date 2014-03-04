@@ -25,6 +25,8 @@ public interface LiferaySelenium extends Selenium {
 
 	public void assertAlert(String pattern) throws Exception;
 
+	public void assertAlertNotPresent() throws Exception;
+
 	public void assertChecked(String pattern) throws Exception;
 
 	public void assertConfirmation(String pattern) throws Exception;
@@ -172,7 +174,7 @@ public interface LiferaySelenium extends Selenium {
 
 	public void replyToEmail(String to, String body) throws Exception;
 
-	public void saveScreenshot(String fileName) throws Exception;
+	public void saveScreenshot() throws Exception;
 
 	public void saveScreenshotAndSource() throws Exception;
 

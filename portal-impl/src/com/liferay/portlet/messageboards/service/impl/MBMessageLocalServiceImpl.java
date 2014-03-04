@@ -29,7 +29,6 @@ import com.liferay.portal.kernel.search.Indexable;
 import com.liferay.portal.kernel.search.IndexableType;
 import com.liferay.portal.kernel.search.Indexer;
 import com.liferay.portal.kernel.search.IndexerRegistryUtil;
-import com.liferay.portal.kernel.transaction.TransactionCommitCallbackRegistryUtil;
 import com.liferay.portal.kernel.util.Constants;
 import com.liferay.portal.kernel.util.ContentTypes;
 import com.liferay.portal.kernel.util.ListUtil;
@@ -67,6 +66,7 @@ import com.liferay.portlet.asset.model.AssetLinkConstants;
 import com.liferay.portlet.blogs.model.BlogsEntry;
 import com.liferay.portlet.blogs.util.LinkbackProducerUtil;
 import com.liferay.portlet.documentlibrary.model.DLFolderConstants;
+import com.liferay.portlet.messageboards.MBSettings;
 import com.liferay.portlet.messageboards.MessageBodyException;
 import com.liferay.portlet.messageboards.MessageSubjectException;
 import com.liferay.portlet.messageboards.NoSuchDiscussionException;
@@ -74,6 +74,7 @@ import com.liferay.portlet.messageboards.NoSuchThreadException;
 import com.liferay.portlet.messageboards.RequiredMessageException;
 import com.liferay.portlet.messageboards.model.MBCategory;
 import com.liferay.portlet.messageboards.model.MBCategoryConstants;
+import com.liferay.portlet.messageboards.model.MBConstants;
 import com.liferay.portlet.messageboards.model.MBDiscussion;
 import com.liferay.portlet.messageboards.model.MBMessage;
 import com.liferay.portlet.messageboards.model.MBMessageConstants;
@@ -83,7 +84,6 @@ import com.liferay.portlet.messageboards.model.MBThreadConstants;
 import com.liferay.portlet.messageboards.model.impl.MBCategoryImpl;
 import com.liferay.portlet.messageboards.model.impl.MBMessageDisplayImpl;
 import com.liferay.portlet.messageboards.service.base.MBMessageLocalServiceBaseImpl;
-import com.liferay.portlet.messageboards.service.permission.MBPermission;
 import com.liferay.portlet.messageboards.social.MBActivityKeys;
 import com.liferay.portlet.messageboards.util.MBSubscriptionSender;
 import com.liferay.portlet.messageboards.util.MBUtil;
@@ -103,7 +103,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 import javax.portlet.PortletRequest;
 import javax.portlet.PortletURL;
@@ -225,11 +224,10 @@ public class MBMessageLocalServiceImpl extends MBMessageLocalServiceBaseImpl {
 		subject = ModelHintsUtil.trimString(
 			MBMessage.class.getName(), "subject", subject);
 
-		Settings settings = SettingsFactoryUtil.getServiceGroupSettings(
-			groupId, MBPermission.RESOURCE_NAME);
+		MBSettings mbSettings = MBUtil.getMBSettings(groupId);
 
-		if (settings != null) {
-			if (!MBUtil.isAllowAnonymousPosting(settings)) {
+		if (mbSettings != null) {
+			if (!mbSettings.isAllowAnonymousPosting()) {
 				if (anonymous || user.isDefaultUser()) {
 					throw new PrincipalException();
 				}
@@ -1892,43 +1890,6 @@ public class MBMessageLocalServiceImpl extends MBMessageLocalServiceBaseImpl {
 		return subject;
 	}
 
-	protected void notify(
-		final SubscriptionSender subscriptionSender,
-		final SubscriptionSender subscriptionSenderPrototype,
-		final long groupId, final List<Long> categoryIds) {
-
-		TransactionCommitCallbackRegistryUtil.registerCallback(
-			new Callable<Void>() {
-
-				@Override
-				public Void call() throws Exception {
-					subscriptionSender.flushNotificationsAsync();
-
-					if (!MailingListThreadLocal.isSourceMailingList()) {
-						return null;
-					}
-
-					for (long categoryId : categoryIds) {
-						MBSubscriptionSender
-							sourceMailingListSubscriptionSender =
-								(MBSubscriptionSender)SerializableUtil.clone(
-									subscriptionSenderPrototype);
-
-						sourceMailingListSubscriptionSender.setBulk(false);
-
-						sourceMailingListSubscriptionSender.
-							addMailingListSubscriber(groupId, categoryId);
-
-						sourceMailingListSubscriptionSender.
-							flushNotificationsAsync();
-					}
-
-					return null;
-				}
-
-			});
-	}
-
 	protected void notifyDiscussionSubscribers(
 			MBMessage message, ServiceContext serviceContext)
 		throws SystemException {
@@ -2015,13 +1976,15 @@ public class MBMessageLocalServiceImpl extends MBMessageLocalServiceBaseImpl {
 		}
 
 		Settings settings = SettingsFactoryUtil.getServiceGroupSettings(
-				message.getGroupId(), PortletKeys.MESSAGE_BOARDS);
+			message.getGroupId(), MBConstants.SERVICE_NAME);
+
+		MBSettings mbSettings = new MBSettings(settings);
 
 		if (serviceContext.isCommandAdd() &&
-			MBUtil.getEmailMessageAddedEnabled(settings)) {
+			mbSettings.isEmailMessageAddedEnabled()) {
 		}
 		else if (serviceContext.isCommandUpdate() &&
-				 MBUtil.getEmailMessageUpdatedEnabled(settings)) {
+				 mbSettings.isEmailMessageUpdatedEnabled()) {
 		}
 		else {
 			return;
@@ -2067,8 +2030,8 @@ public class MBMessageLocalServiceImpl extends MBMessageLocalServiceBaseImpl {
 		String entryTitle = message.getSubject();
 		String entryURL = getMessageURL(message, serviceContext);
 
-		String fromName = MBUtil.getEmailFromName(settings);
-		String fromAddress = MBUtil.getEmailFromAddress(settings);
+		String fromName = mbSettings.getEmailFromName();
+		String fromAddress = mbSettings.getEmailFromAddress();
 
 		String replyToAddress = StringPool.BLANK;
 
@@ -2080,33 +2043,17 @@ public class MBMessageLocalServiceImpl extends MBMessageLocalServiceBaseImpl {
 
 		String subject = null;
 		String body = null;
-		String signature = null;
 
 		if (serviceContext.isCommandUpdate()) {
-			subject = MBUtil.getEmailMessageUpdatedSubject(settings);
-			body = MBUtil.getEmailMessageUpdatedBody(settings);
-			signature = MBUtil.getEmailMessageUpdatedSignature(settings);
+			subject = mbSettings.getEmailMessageUpdatedSubject();
+			body = mbSettings.getEmailMessageUpdatedBody();
 		}
 		else {
-			subject = MBUtil.getEmailMessageAddedSubject(settings);
-			body = MBUtil.getEmailMessageAddedBody(settings);
-			signature = MBUtil.getEmailMessageAddedSignature(settings);
+			subject = mbSettings.getEmailMessageAddedSubject();
+			body = mbSettings.getEmailMessageAddedBody();
 		}
 
-		boolean htmlFormat = MBUtil.getEmailHtmlFormat(settings);
-
-		if (Validator.isNotNull(signature)) {
-			String signatureSeparator = null;
-
-			if (htmlFormat) {
-				signatureSeparator = "<br />--<br />";
-			}
-			else {
-				signatureSeparator = "\n--\n";
-			}
-
-			body += signatureSeparator + signature;
-		}
+		boolean htmlFormat = mbSettings.isEmailHtmlFormat();
 
 		String messageBody = message.getBody();
 
@@ -2191,9 +2138,22 @@ public class MBMessageLocalServiceImpl extends MBMessageLocalServiceBaseImpl {
 		subscriptionSender.addPersistedSubscribers(
 			MBThread.class.getName(), message.getThreadId());
 
-		notify(
-			subscriptionSender, subscriptionSenderPrototype,
-			message.getGroupId(), categoryIds);
+		subscriptionSender.flushNotificationsAsync();
+
+		if (!MailingListThreadLocal.isSourceMailingList()) {
+			for (long categoryId : categoryIds) {
+				MBSubscriptionSender sourceMailingListSubscriptionSender =
+					(MBSubscriptionSender)SerializableUtil.clone(
+						subscriptionSenderPrototype);
+
+				sourceMailingListSubscriptionSender.setBulk(false);
+
+				sourceMailingListSubscriptionSender.addMailingListSubscriber(
+					message.getGroupId(), categoryId);
+
+				sourceMailingListSubscriptionSender.flushNotificationsAsync();
+			}
+		}
 	}
 
 	protected void pingPingback(

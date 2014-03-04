@@ -784,7 +784,22 @@ public class WebDriverToSeleniumBridge
 
 	@Override
 	public boolean isAlertPresent() {
-		throw new UnsupportedOperationException();
+		boolean alertPresent = false;
+
+		switchTo();
+
+		try {
+			WebDriverWait webDriverWait = new WebDriverWait(this, 1);
+
+			webDriverWait.until(ExpectedConditions.alertIsPresent());
+
+			alertPresent = true;
+		}
+		catch (Exception e) {
+			alertPresent = false;
+		}
+
+		return alertPresent;
 	}
 
 	@Override
